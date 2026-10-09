@@ -23,7 +23,6 @@
 
 // ==========================================
 // 2. FAKE VERSION LÊN MAX (999.99.99) BÊN TRONG APP
-// (Vượt qua các hàm check local version)
 // ==========================================
 %hook NSBundle
 - (id)objectForInfoDictionaryKey:(NSString *)key {
@@ -34,11 +33,14 @@
 }
 
 - (NSDictionary *)infoDictionary {
-    NSMutableDictionary *info = [%orig mutableCopy];
-    if (info) {
-        info[@"CFBundleShortVersionString"] = @"999.99.99";
-        info[@"CFBundleVersion"] = @"999.99.99";
-    }
+    // Tách riêng %orig ra một biến để Theos không bị lỗi cú pháp
+    NSDictionary *origDict = %orig;
+    if (!origDict) return origDict;
+    
+    NSMutableDictionary *info = [origDict mutableCopy];
+    info[@"CFBundleShortVersionString"] = @"999.99.99";
+    info[@"CFBundleVersion"] = @"999.99.99";
+    
     return info;
 }
 %end
