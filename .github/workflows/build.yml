@@ -23,6 +23,16 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Debug — list repo files
+        shell: bash
+        run: |
+          echo "=== Repo root ==="
+          ls -la
+          echo "=== Find Makefile ==="
+          find . -maxdepth 3 -name "Makefile" -not -path "./theos/*"
+          echo "=== Find Tweak.xm ==="
+          find . -maxdepth 3 -name "Tweak.xm" -not -path "./theos/*"
+
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -33,7 +43,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/theos
-          key: theos-macos14-v4
+          key: theos-macos14-v5
 
       - name: Install Theos
         if: steps.cache-theos.outputs.cache-hit != 'true'
@@ -46,7 +56,7 @@ jobs:
 
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
           SDK_VER=$(xcrun --sdk iphoneos --show-sdk-version)
-          echo "SDK: $SDK_VER at $SDK_PATH"
+          echo "SDK: $SDK_VER"
 
           cp -R "$SDK_PATH" "$THEOS/sdks/iPhoneOS${SDK_VER}.sdk"
           ln -sf "$THEOS/sdks/iPhoneOS${SDK_VER}.sdk" "$THEOS/sdks/latest.sdk"
@@ -56,21 +66,26 @@ jobs:
         shell: bash
         run: brew install ldid xz
 
-      - name: Verify Theos
-        shell: bash
-        run: |
-          echo "THEOS=$HOME/theos"
-          ls -la "$HOME/theos/sdks/"
-          which ldid || brew --prefix ldid
-
       - name: Build — ${{ matrix.scheme }}
         shell: bash
-        working-directory: ClaudeGuard
-        env:
-          THEOS: ${{ github.workspace }}/../theos
         run: |
+          set -e
           export THEOS="$HOME/theos"
           export PATH="$THEOS/bin:$PATH"
+
+          # Tự tìm thư mục chứa Makefile của tweak
+          TWEAK_DIR=$(find "$GITHUB_WORKSPACE" -maxdepth 3 -name "Makefile" \
+              -not -path "*/theos/*" -not -path "*/node_modules/*" \
+              | head -1 | xargs dirname)
+          echo "TWEAK_DIR = $TWEAK_DIR"
+
+          if [ -z "$TWEAK_DIR" ]; then
+            echo "Không tìm thấy Makefile. Repo có file nào:"
+            ls -la "$GITHUB_WORKSPACE"
+            exit 1
+          fi
+
+          cd "$TWEAK_DIR"
 
           case "${{ matrix.scheme }}" in
             rootful)
@@ -83,26 +98,28 @@ jobs:
               ;;
             roothide)
               make clean
-              make package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1
+              make package THEOS "$_PACKAGE_SCHEME=roothide FINALPACKAGE=1
               ;;
           esac
 
           ls -lh packages/
+          echo "TWEAK_DIR=$TWEAK_DIR" >> "$GITHUB_ENV"
 
       - name: Rename artifact
-        shell: bash
-        working-directory: ClaudeGuard/packages
+        shellTW: bash
         run: |
+          cdEAK_DIR/packages"
           DEB=$(ls *.deb | head -1)
           NEW="ClaudeGuard-${{ matrix.scheme }}.deb"
           mv "$DEB" "$NEW"
           ls -lh "$NEW"
+          echo "ARTIFACT_PATH=$TWEAK_DIR/packages/$NEW" >> "$GITHUB_ENV"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ClaudeGuard-${{ matrix.scheme }}
-          path: ClaudeGuard/packages/ClaudeGuard-${{ matrix.scheme }}.deb
+          path: ${{ env.ARTIFACT_PATH }}
           if-no-files-found: error
 
   release:
@@ -157,8 +174,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p repo/debs
-          find debs -name "*.deb"ấ -exec cp {} repo/debs/ \;
-          ls -lhn repo/debs/
+          find debs -name "*.deb" -exec cp {} repo/debs/ \;
+          ls -lh repo/debs/
 
       - name: Install dpkg
         run: |
@@ -166,7 +183,7 @@ jobs:
           sudo apt-get install -y dpkg-dev
 
       - name: Build Packages index
-        shell: bash đề
+        shell: bash
         working-directory: repo
         run: |
           cd debs
