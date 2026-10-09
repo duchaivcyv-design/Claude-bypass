@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+ "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Đọc/ghi ngoài container — cần AMFI patched (jailbreak) -->
+    <key>com.apple.private.security.no-container</key>
+    <true/>
+
+    <!-- Bỏ sandbox hoàn toàn — chỉ có hiệu lực khi amfi bypass + platformize -->
+    <key>com.apple.private.security.container-required</key>
+    <false/>
+
+    <!-- Platform binary — cho phép lấy entitlement cao hơn (proc_info, task_for_pid) -->
+    <key>platform-application</key>
+    <true/>
+
+    <!-- Bỏ qua code signing validation nội bộ -->
+    <key>com.apple.private.cs.debugger</key>
+    <true/>
+
+    <!-- Truy cập task port của process khác (attach debugger) -->
+    <key>com.apple.private.security.storage.AppDataContainers</key>
+    <true/>
+
+    <!-- Đọc thông tin hệ thống thô -->
+    <key>com.apple.private.kernel.get-kext-info</key>
+    <true/>
+    <key>com.apple.private.kernel.global-initialization-data</key>
+    <true/>
+
+    <!-- get-task-allow để debug trong process Claude -->
+    <key>get-task-allow</key>
+    <true/>
+
+    <!-- Truy cập file system rộng — jailbreak path -->
+    <key>com.apple.private.security.no-sandbox</key>
+    <true/>
+    <key>com.apple.private.skip-library-validation</key>
+    <true/>
+
+    <!-- Cho phép load dylib unsigned (dùng cho tweak) -->
+    <key>com.apple.private.amfi.can-load-unsigned-code</key>
+    <true/>
+    <key>dynamic-codesigning</key>
+    <true/>
+
+    <!-- Ghi log hệ thống -->
+    <key>com.apple.private.logging.private-data</key>
+    <true/>
+
+    <!-- Bỏ giới hạn mach lookup -->
+    <key>com.apple.private.mach-lookup.global-name</key>
+    <array>
+        <string>com.apple.springboard.services</string>
+        <string>com.apple.backboardd</string>
+    </array>
+</dict>
+</plist>
