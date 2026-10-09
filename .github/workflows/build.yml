@@ -33,21 +33,25 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/theos
-          key: theos-macos14-v2
+          key: theos-macos14-v3
 
-      - name: Install Theos
+      - name: Install Theos + SDK
         if: steps.cache-theos.outputs.cache-hit != 'true'
         run: |
           set -e
           export THEOS=$HOME/theos
-          git clone --recursive https://github.com/theos/theos.git $THEOS
-          # SDK: dùng link trực tiếp từ theos/sdks với -fL để follow redirect
-          cd /tmp
-          curl -fL -o iPhoneOS16.5.sdk.tar.xz \
-            https://github.com/theos/sdks/releases/download/master/iPhoneOS16.5.sdk.tar.xz
-          file iPhoneOS16.5.sdk.tar.xz
+          s git clone --recursive https://github.com/theos/theos.git $THEOS
           mkdir -p $THEOS/sdks
-          tar -xJf iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks/
+
+          # Lấy SDK trực tiếp từ Xcode cóẵn trên runner
+          XCODE_SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          XCODE_SDK_VER=$(xcrun --sdk iphoneos --show-sdk-version)
+          echo "SDK version: $XCODE_SDK_VER"
+          cp -R "$XCODE_SDK" "$THEOS/sdks/iPhoneOS${XCODE_SDK_VER}.sdk"
+
+          # Thêm symlink 'latest' cho Theos fallback
+          ln -sf "$THEOS/sdks/iPhoneOS${XCODE_SDK_VER}.sdk" "$THEOS/sdks/latest.sdk"
+
           ls -la $THEOS/sdks/
 
       - name: Install toolchain
@@ -62,9 +66,8 @@ jobs:
       - name: Verify Theos
         run: |
           echo "THEOS = $THEOS"
-          ls -la $THEOS
           ls -la $THEOS/sdks/
-          which ldid || true
+          which ldid
 
       - name: Build tweak — ${{ matrix.scheme }}
         working-directory: ClaudeGuard
