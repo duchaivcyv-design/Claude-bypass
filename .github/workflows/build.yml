@@ -1,0 +1,158 @@
+name: Build ClaudeGuard deb
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.scheme }} deb
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: [ rootful, rootless, roothide ]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install Theos
+        run: |
+          export THEOS=$HOME/theos
+          git clone --recursive https://github.com/theos/theos.git $THEOS
+          # Toolchain lấy từ Procursus (arm64 + arm64e cross)
+          curl -LO https://github.com/theos/sdks/releases/download/master/iPhoneOS16.5.sdk.tar.xz
+          tar -xJf iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks/
+          # Lấy ldid
+          brew install ldid xz
+          echo "THEOS=$THEOS" >> $GITHUB_ENV
+
+      - name: Build tweak — ${{ matrix.scheme }}
+        working-directory: ClaudeGuard
+        run: |
+          set -e
+          case "${{ matrix.scheme }}" in
+            rootful)
+              make clean
+              make package FINALPACKAGE=1
+              ;;
+            rootless)
+              make clean
+              make package THEOS_PACKAGE_SCHEME=rootless FINALPACKAGE=1
+              ;;
+            roothide)
+              make clean
+              make package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1
+              ;;
+          esac
+          ls -lh packages/
+
+      - name: Rename artifact
+        run: |
+          cd ClaudeGuard/packages
+          DEB=$(ls *.deb | head -1)
+          NEW="ClaudeGuard-${{ matrix.scheme }}.deb"
+          mv "$DEB" "$NEW"
+          echo "ARTIFACT=$NEW" >> $GITHUB_ENV
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeGuard-${{ matrix.scheme }}
+          path: ClaudeGuard/packages/ClaudeGuard-${{ matrix.scheme }}.deb
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -name "*.deb" -exec cp {} release/ \;
+          ls -lh release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.deb
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  pages-repo:
+    name: Publish Sileo/Zebra repo
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download debs
+        uses: actions/download-artifact@v4
+        with:
+          path: debs
+
+      - name: Prepare repo structure
+        run: |
+          mkdir -p repo/debs
+          find debs -name "*.deb" -exec cp {} repo/debs/ \;
+          ls -lh repo/debs/
+
+      - name: Install dpkg tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev apt-utils
+
+      - name: Build Packages index
+        working-directory: repo
+        run: |
+          cd debs
+          dpkg-scanpackages . /dev/null > ../Packages 2>/dev/null
+          gzip -kf ../Packages
+          bzip2 -kf ../Packages
+          cd ..
+          echo "Origin: Nono Forge" > Release
+          echo "Label: ClaudeGuard" >> Release
+          echo "Suite: stable" >> Release
+          echo "Version: 1.0" >> Release
+          echo "Architectures: iphoneos-arm iphoneos-arm64" >> Release
+          echo "Components: main" >> Release
+          echo "Description: Nono ClaudeGuard repo" >> Release
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./repo
+          publish_branch: gh-pages
