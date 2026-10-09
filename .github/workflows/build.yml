@@ -47,39 +47,40 @@ jobs:
           set -e
           export THEOS=$HOME/theos
 
-          cd /tmp
-          rm -rf roothide-theos
-          git clone --depth 1 https://github.com/roothide/theos.git roothide-theos
+          # Xem Theos hỗ trợ scheme qua cơ chế nào
+          echo "=== Cách Theos check scheme ==="
+          grep -n "PACKAGE_SCHEME\|package_scheme\|package scheme" $THEOS/makefiles/common.mk | head -30
+          echo ""
+          echo "=== File install rules có sẵn ==="
+          ls -la $THEOS/makefiles/install/
 
-          echo "=== Tìm roothide.mk ==="
-          ROOTHIDE_MK=$(find /tmp/roothide-theos -name "roothide.mk" 2>/dev/null | head -1)
-          echo "Found: $ROOTHIDE_MK"
-
-          if [ -z "$ROOTHIDE_MK" ]; then
-            git clone --depth 1 https://github.com/roothide/libroothide.git /tmp/libroothide
-            ROOTHIDE_MK=$(find /tmp/libroothide -name "roothide.mk" 2>/dev/null | head -1)
-            echo "libroothide Found: $ROOTHIDE_MK"
-          fi
-
-          if [ -z "$ROOTHIDE_MK" ]; then
-            echo "=== Toàn bộ .mk files ==="
-            find /tmp/roothide-theos -type f -name "*.mk" | head -50
-            echo "FAIL: không có roothide.mk"
-            exit 1
-          fi
-
+          # Tạo roothide.mk tự viết
           mkdir -p $THEOS/makefiles/package
-          cp "$ROOTHIDE_MK" $THEOS/makefiles/package/roothide.mk
+          cat > $THEOS/makefiles/package/roothide.mk <<'ROOTHIDE_EOF'
+_THEOS_PACKAGE_SCHEME = roothide
+_THEOS_PACKAGE_ROOT_PREFIX = /var/containers/Bundle/tweaksupport
+_THEOS_PACKAGE_INSTALL_PREFIX = /var/containers/Bundle/tweaksupport
+_THEOS_PACKAGE_LIBRARY_PATH = /var/containers/Bundle/tweaksupport/usr/lib
+_THEOS_PACKAGE_ARCH = iphoneos-arm64
+_THEOS_PACKAGE_DEB_ARCH = iphoneos-arm64
+ROOTHIDE_EOF
 
+          # Tạo install rule cho roothide — copy từ rootless làm template
+          if [ -f $THEOS/makefiles/install/deb_local.mk ]; then
+            cp $THEOS/makefiles/install/deb_local.mk $THEOS/makefiles/install/roothide_local.mk || true
+          fi
+
+          # Patch common.mk để cho phép scheme roothide
+          # Cách 1: Thêm vào danh sách schemes nếu có biến
           grep -q "roothide" $THEOS/makefiles/common.mk || {
-            sed -i '' 's/^SUPPORTED_PACKAGE_SCHEMES.*/SUPPORTED_PACKAGE_SCHEMES = rootful rootless roothide/' $THEOS/makefiles/common.mk || true
-            grep -q "roothide" $THEOS/makefiles/common.mk || \
-              perl -i -pe 's/^(SUPPORTED_PACKAGE_SCHEMES.*)/$1 roothide/' $THEOS/makefiles/common.mk
+            # Chèn dòng override ở đầu file để buộc scheme hợp lệ
+            perl -i -pe 'print "# roothide patch\n_SUPPORTED_PACKAGE_SCHEMES += roothide\n" if $. == 1' $THEOS/makefiles/common.mk
           }
 
-          echo "=== SUPPORTED_PACKAGE_SCHEMES ==="
-          grep SUPPORTED_PACKAGE_SCHEMES $THEOS/makefiles/common.mk || true
+          echo "=== Verify ==="
+          head -10 $THEOS/makefiles/common.mk
           ls -la $THEOS/makefiles/package/
+          ls -la $THEOS/makefiles/install/ | grep roothide || echo "(chưa có roothide install rule)"
 
       - name: Build tweak
         env:
