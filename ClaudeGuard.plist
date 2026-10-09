@@ -8,12 +8,7 @@
         <key>Bundles</key>
         <array>
             <string>com.anthropic.claude</string>
-            <string>com.apple.AppStore</string>
-            <string>com.apple.storekitd</string>
-            <string>com.apple.ios.StoreKitUIService</string>
         </array>
-        <key>Mode</key>
-        <string>Any</string>
     </dict>
 </dict>
 </plist>
