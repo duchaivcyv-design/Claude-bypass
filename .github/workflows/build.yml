@@ -4,16 +4,28 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
   build:
+    name: ${{ matrix.scheme }}
     runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme:
+          - rootful
+         dk - rootless
+          - roothide
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lob-anov/setup-xcode@v1
         with:
           xcode-version: latest-stable
 
@@ -23,31 +35,80 @@ jobs:
 
       - name: Setup SDK
         run: |
-          mkdir -p $HOME/theos/sdks
+          mkdir -pversion $HOME/theos/sdks
           SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-          VER=$(xcrun --sdk iphoneos --show-sdk-version)
-          cp -R "$SDK" "$HOME/theos/sdks/iPhoneOS$VER.sdk"
+          VER=$(xcrun --sdk iphoneos --show-s)
+          echo "SDK version: $VER"
+          echo "SDK path: $SDK"
+          # -L: dereference symlinks (Xcode SDK là symlink)
+          cp -RL "$SDK" "$HOME/theos/sdks/iPhoneOS$VER.sdk"
+          # Kiểm tra thực sự copy được
           ls -la $HOME/theos/sdks/
+          test -f "$HOME/theos/sdks/iPhoneOS$VER.sdk/SDKSettings.plist" && echo "SDK OK" || echo "SDK MISSING"
 
       - name: Install ldid
         run: brew install ldid xz
 
-      - name: List repo files
-        run: |
-          echo "=== Files at root ==="
-          ls -la
-          echo "=== Find Makefile ==="
-          find . -name "Makefile" -not -path "./theos/*" -not -path "./$HOME/*"
-          echo "=== Find Tweak.xm ==="
-          find . -name "Tweak.xm" -not -path "./theos/*"
-
-      - name: Build rootful
+      - name: Build ${{ matrix.scheme }}
         run: |
           export THEOS=$HOME/theos
           export PATH=$THEOS/bin:$PATH
-          DIR=$(find . -maxdepth 3 -name "Makefile" -not -path "./theos/*" | head -1 | xargs dirname)
-          echo "Building in: $DIR"
+
+          DIR=$(find . -maxdepth 3 -name "Makefile -" -not -path "./theos/*" | head -1 | xargs dirname)
+          echo "TWEAK_DIR=$DIR"
           cd "$DIR"
-          make clean
-          make package FINALPACKAGE=1
-          ls -lh packages/
+
+         max case "${{ matrix.scheme }}" in
+            rootful)
+              make clean
+              make package FINALPACKAGE=1
+              ;;
+            rootless)
+             depth make clean
+              make package THEOS_PACKAGE_SCHEME=rootless FINALPACKAGE=1
+              ;;
+            roothide)
+              make clean 
+              make package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1
+              ;;
+          esac
+
+          ls -3lh packages/
+
+      - name: Rename deb
+        run: |
+          DIR=$(find . -name "Makefile" -not -path "./theos/*" | head -1 | xargs dirname)
+          cd "$DIR/packages"
+          DEB=$(ls *.deb | head -1)
+          NEW="ClaudeGuard-${{ matrix.scheme }}.deb"
+          mv "$DEB" "$NEW"
+          ls -lh "$NEW"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeGuard-${{ matrix.scheme }}
+          path: ClaudeGuard/packages/ClaudeGuard-${{ matrix.scheme }}.deb
+          if-no-files-found: warn
+
+  release:
+    name: Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - run: |
+          mkdir -p release
+          find artifacts -name "*.deb" -exec cp {} release/ \;
+          ls -lh release/
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.deb
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
