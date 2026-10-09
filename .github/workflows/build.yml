@@ -44,6 +44,40 @@ jobs:
       - name: Install ldid
         run: brew install ldid xz
 
+      - name: Install roothide scheme
+        run: |
+          set -e
+          export THEOS=$HOME/theos
+
+          # Clone repo RootHide
+          cd /tmp
+          git clone --depth 1 https://github.com/roothide/theos.git roothide-theos
+
+          # Copy package scheme
+          mkdir -p $THEOS/makefiles/package
+          cp /tmp/roothide-theos/makefiles/package/roothide.mk $THEOS/makefiles/package/roothide.mk
+
+          # Copy roothide patch tool (ldid wrapper cho roothide)
+          mkdir -p $THEOS/bin
+          if [ -f /tmp/roothide-theos/bin/ldid ]; then
+            cp /tmp/roothide-theos/bin/ldid $THEOS/bin/ldid-roothide
+            chmod +x $THEOS/bin/ldid-roothide
+          fi
+
+          # Patch common.mk để chấp nhận roothide scheme
+          if ! grep -q "roothide" $THEOS/makefiles/common.mk; then
+            echo "Patching common.mk..."
+            # Backup
+            cp $THEOS/makefiles/common.mk $THEOS/makefiles/common.mk.bak
+            # Cho phép scheme roothide
+            sed -i '' 's/SUPPORTED_PACKAGE_SCHEMES.*/SUPPORTED_PACKAGE_SCHEMES = rootful rootless roothide/' \
+              $THEOS/makefiles/common.mk 2>/dev/null || \
+            sed -i 's/SUPPORTED_PACKAGE_SCHEMES.*/SUPPORTED_PACKAGE_SCHEMES = rootful rootless roothide/' \
+              $THEOS/makefiles/common.mk
+          fi
+
+          ls -la $THEOS/makefiles/package/
+
       - name: Build tweak
         env:
           SCHEME: ${{ matrix.scheme }}
