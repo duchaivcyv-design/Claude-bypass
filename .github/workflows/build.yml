@@ -28,16 +28,43 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      - name: Cache Theos
+        id: cache-theos
+        uses: actions/cache@v4
+        with:
+          path: ~/theos
+          key: theos-macos14-v2
+
       - name: Install Theos
+        if: steps.cache-theos.outputs.cache-hit != 'true'
         run: |
+          set -e
           export THEOS=$HOME/theos
           git clone --recursive https://github.com/theos/theos.git $THEOS
-          # Toolchain lấy từ Procursus (arm64 + arm64e cross)
-          curl -LO https://github.com/theos/sdks/releases/download/master/iPhoneOS16.5.sdk.tar.xz
+          # SDK: dùng link trực tiếp từ theos/sdks với -fL để follow redirect
+          cd /tmp
+          curl -fL -o iPhoneOS16.5.sdk.tar.xz \
+            https://github.com/theos/sdks/releases/download/master/iPhoneOS16.5.sdk.tar.xz
+          file iPhoneOS16.5.sdk.tar.xz
+          mkdir -p $THEOS/sdks
           tar -xJf iPhoneOS16.5.sdk.tar.xz -C $THEOS/sdks/
-          # Lấy ldid
+          ls -la $THEOS/sdks/
+
+      - name: Install toolchain
+        run: |
           brew install ldid xz
-          echo "THEOS=$THEOS" >> $GITHUB_ENV
+
+      - name: Export env
+        run: |
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+          echo "$HOME/theos/bin" >> $GITHUB_PATH
+
+      - name: Verify Theos
+        run: |
+          echo "THEOS = $THEOS"
+          ls -la $THEOS
+          ls -la $THEOS/sdks/
+          which ldid || true
 
       - name: Build tweak — ${{ matrix.scheme }}
         working-directory: ClaudeGuard
