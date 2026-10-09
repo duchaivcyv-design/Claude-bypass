@@ -1,0 +1,9 @@
+Package: com.nono.claudeguard
+Name: Claude iOS
+Version: 1.0.0-beta2
+Architecture: iphoneos-arm64
+Description: Giả iOS 18 + chặn force update + ổn định gửi tin nhắn cho Claude
+Maintainer: Nono
+Author: Nono
+Section: Tweaks
+Depends: mobilesubstrate, firmware (>= 15.0)
