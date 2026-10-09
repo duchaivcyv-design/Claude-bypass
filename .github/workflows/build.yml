@@ -33,46 +33,45 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/theos
-          key: theos-macos14-v3
+          key: theos-macos14-v4
 
-      - name: Install Theos + SDK
+      - name: Install Theos
         if: steps.cache-theos.outputs.cache-hit != 'true'
+        shell: bash
         run: |
           set -e
-          export THEOS=$HOME/theos
-          s git clone --recursive https://github.com/theos/theos.git $THEOS
-          mkdir -p $THEOS/sdks
+          export THEOS="$HOME/theos"
+          git clone --recursive https://github.com/theos/theos.git "$THEOS"
+          mkdir -p "$THEOS/sdks"
 
-          # Lấy SDK trực tiếp từ Xcode cóẵn trên runner
-          XCODE_SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-          XCODE_SDK_VER=$(xcrun --sdk iphoneos --show-sdk-version)
-          echo "SDK version: $XCODE_SDK_VER"
-          cp -R "$XCODE_SDK" "$THEOS/sdks/iPhoneOS${XCODE_SDK_VER}.sdk"
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          SDK_VER=$(xcrun --sdk iphoneos --show-sdk-version)
+          echo "SDK: $SDK_VER at $SDK_PATH"
 
-          # Thêm symlink 'latest' cho Theos fallback
-          ln -sf "$THEOS/sdks/iPhoneOS${XCODE_SDK_VER}.sdk" "$THEOS/sdks/latest.sdk"
-
-          ls -la $THEOS/sdks/
+          cp -R "$SDK_PATH" "$THEOS/sdks/iPhoneOS${SDK_VER}.sdk"
+          ln -sf "$THEOS/sdks/iPhoneOS${SDK_VER}.sdk" "$THEOS/sdks/latest.sdk"
+          ls -la "$THEOS/sdks/"
 
       - name: Install toolchain
-        run: |
-          brew install ldid xz
-
-      - name: Export env
-        run: |
-          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
-          echo "$HOME/theos/bin" >> $GITHUB_PATH
+        shell: bash
+        run: brew install ldid xz
 
       - name: Verify Theos
+        shell: bash
         run: |
-          echo "THEOS = $THEOS"
-          ls -la $THEOS/sdks/
-          which ldid
+          echo "THEOS=$HOME/theos"
+          ls -la "$HOME/theos/sdks/"
+          which ldid || brew --prefix ldid
 
-      - name: Build tweak — ${{ matrix.scheme }}
+      - name: Build — ${{ matrix.scheme }}
+        shell: bash
         working-directory: ClaudeGuard
+        env:
+          THEOS: ${{ github.workspace }}/../theos
         run: |
-          set -e
+          export THEOS="$HOME/theos"
+          export PATH="$THEOS/bin:$PATH"
+
           case "${{ matrix.scheme }}" in
             rootful)
               make clean
@@ -87,17 +86,19 @@ jobs:
               make package THEOS_PACKAGE_SCHEME=roothide FINALPACKAGE=1
               ;;
           esac
+
           ls -lh packages/
 
       - name: Rename artifact
+        shell: bash
+        working-directory: ClaudeGuard/packages
         run: |
-          cd ClaudeGuard/packages
           DEB=$(ls *.deb | head -1)
           NEW="ClaudeGuard-${{ matrix.scheme }}.deb"
           mv "$DEB" "$NEW"
-          echo "ARTIFACT=$NEW" >> $GITHUB_ENV
+          ls -lh "$NEW"
 
-      - name: Upload deb artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ClaudeGuard-${{ matrix.scheme }}
@@ -113,29 +114,28 @@ jobs:
       contents: write
 
     steps:
-      - name: Download all artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Flatten artifacts
+      - name: Flatten
+        shell: bash
         run: |
           mkdir -p release
           find artifacts -name "*.deb" -exec cp {} release/ \;
           ls -lh release/
 
-      - name: Create GitHub Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: release/*.deb
           generate_release_notes: true
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   pages-repo:
-    name: Publish Sileo/Zebra repo
+    name: Publish Sileo repo
     needs: build
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -153,18 +153,20 @@ jobs:
         with:
           path: debs
 
-      - name: Prepare repo structure
+      - name: Prepare repo
+        shell: bash
         run: |
           mkdir -p repo/debs
-          find debs -name "*.deb" -exec cp {} repo/debs/ \;
-          ls -lh repo/debs/
+          find debs -name "*.deb"ấ -exec cp {} repo/debs/ \;
+          ls -lhn repo/debs/
 
-      - name: Install dpkg tools
+      - name: Install dpkg
         run: |
           sudo apt-get update
-          sudo apt-get install -y dpkg-dev apt-utils
+          sudo apt-get install -y dpkg-dev
 
       - name: Build Packages index
+        shell: bash đề
         working-directory: repo
         run: |
           cd debs
@@ -172,15 +174,15 @@ jobs:
           gzip -kf ../Packages
           bzip2 -kf ../Packages
           cd ..
-          echo "Origin: Nono Forge" > Release
-          echo "Label: ClaudeGuard" >> Release
-          echo "Suite: stable" >> Release
-          echo "Version: 1.0" >> Release
-          echo "Architectures: iphoneos-arm iphoneos-arm64" >> Release
-          echo "Components: main" >> Release
-          echo "Description: Nono ClaudeGuard repo" >> Release
+          printf 'Origin: Nono Forge\n' > Release
+          printf 'Label: ClaudeGuard\n' >> Release
+          printf 'Suite: stable\n' >> Release
+          printf 'Version: 1.0\n' >> Release
+          printf 'Architectures: iphoneos-arm iphoneos-arm64\n' >> Release
+          printf 'Components: main\n' >> Release
+          printf 'Description: Nono ClaudeGuard repo\n' >> Release
 
-      - name: Deploy to gh-pages
+      - name: Deploy gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
